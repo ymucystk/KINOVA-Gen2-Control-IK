@@ -9,6 +9,7 @@ export default function Home() {
   const [robotName,set_robotName] = React.useState(robotNameList[0])
   const [cursor_vis,set_cursor_vis] = React.useState(false)
   const [box_vis,set_box_vis] = React.useState(false)
+  const [target_error,set_target_error] = React.useState(false)
 
   const [j1_rotate,set_j1_rotate] = React.useState(0)
   const [j2_rotate,set_j2_rotate] = React.useState(0)
@@ -232,6 +233,7 @@ export default function Home() {
     },[target,tool_rotate])
 
     const target_update = ()=>{
+      set_target_error(false)
       const p21_pos = get_p21_pos()
       const {direction,angle} = direction_angle(p21_pos)
       if(isNaN(direction)){
@@ -245,98 +247,156 @@ export default function Home() {
         return
       }
       set_wrist_degree({direction,angle})
-
-      const p15_16_offset_pos = {...p21_pos}
-      const new_p15_pos = pos_sub(target,p15_16_offset_pos)
-      target15_update(new_p15_pos,direction,angle)
+  
+      target15_update(direction,angle)
     }
-
-    const target15_update = (target15,wrist_direction,wrist_angle)=>{
+  
+    const target15_update = (wrist_direction,wrist_angle)=>{
       let dsp_message = ""
-      const p16_pos = {...target}
-
-      const syahen_t15 = round(distance({x:0,y:joint_pos.j2.y,z:0},target15))
-      const takasa_t15 = round(target15.y - joint_pos.j2.y)
+      const shift_target = {...target}
+      let result_rotate = {j1_rotate,j2_rotate,j3_rotate,j4_rotate,j5_rotate,j6_rotate,dsp_message}
+      let save_distance = undefined
+      let save_distance_cnt = 0
+  
+      for(let i=0; i<10; i=i+1){
+        //set_test_pos({...shift_target})
+        result_rotate = get_all_rotate(shift_target,wrist_direction,wrist_angle)
+        if(result_rotate.dsp_message){
+          dsp_message = result_rotate.dsp_message
+          console.log(dsp_message)
+          set_target_error(true)
+        }
+  
+        const base_m4 = new THREE.Matrix4().multiply(
+          new THREE.Matrix4().makeRotationY(toRadian(result_rotate.j1_rotate)).setPosition(joint_pos.j1.x,joint_pos.j1.y,joint_pos.j1.z)
+        ).multiply(
+          new THREE.Matrix4().makeRotationX(toRadian(result_rotate.j2_rotate)).setPosition(joint_pos.j2.x,joint_pos.j2.y,joint_pos.j2.z)
+        ).multiply(
+          new THREE.Matrix4().makeRotationX(toRadian(result_rotate.j3_rotate)).setPosition(joint_pos.j3.x,joint_pos.j3.y,joint_pos.j3.z)
+        ).multiply(
+          new THREE.Matrix4().makeRotationY(toRadian(result_rotate.j4_rotate)).setPosition(joint_pos.j4.x,joint_pos.j4.y,joint_pos.j4.z)
+        ).multiply(
+          new THREE.Matrix4().makeRotationX(toRadian(result_rotate.j5_rotate)).setPosition(joint_pos.j5.x,joint_pos.j5.y,joint_pos.j5.z)
+        ).multiply(
+          new THREE.Matrix4().makeRotationZ(toRadian(result_rotate.j6_rotate)).setPosition(joint_pos.j6.x,joint_pos.j6.y,joint_pos.j6.z)
+        ).multiply(
+          new THREE.Matrix4().setPosition(joint_pos.j7.x,joint_pos.j7.y,joint_pos.j7.z)
+        )
+        const result_target = new THREE.Vector4(0,0,0,1).applyMatrix4(base_m4)
+        const sabun_pos = pos_sub(target,result_target)
+        const sabun_distance = sabun_pos.x**2+sabun_pos.y**2+sabun_pos.z**2
+        if(round(sabun_distance) <= 0){
+          break
+        }
+        if(save_distance === undefined){
+          save_distance = sabun_distance
+        }else{
+          if(save_distance < sabun_distance){
+            save_distance_cnt = save_distance_cnt + 1
+            if(save_distance_cnt > 1){
+              if(round(sabun_distance,4) <= 0){
+                console.log("姿勢制御困難！")
+                break  
+              }
+              console.log("姿勢制御不可！")
+              set_dsp_message("姿勢制御不可！")
+              console.log(`result_target:{x:${result_target.x}, y:${result_target.y}, z:${result_target.z}}`)
+              set_target_error(true)
+              return
+            }
+          }
+          save_distance = sabun_distance
+        }
+        shift_target.x = shift_target.x + sabun_pos.x
+        shift_target.y = shift_target.y + sabun_pos.y
+        shift_target.z = shift_target.z + sabun_pos.z
+      }
+  
+      set_j1_rotate(result_rotate.j1_rotate)
+      set_j2_rotate(result_rotate.j2_rotate)
+      set_j3_rotate(result_rotate.j3_rotate)
+      set_j4_rotate(result_rotate.j4_rotate)
+      set_j5_rotate(result_rotate.j5_rotate)
+      set_j6_rotate(normalize180(round(result_rotate.j6_rotate + tool_rotate)))
+      set_dsp_message(dsp_message)
+    }
+  
+    const get_all_rotate = (final_target,wrist_direction,wrist_angle)=>{
+      let dsp_message = ""
+      const p16_pos = {...final_target}
+      const p15_16_offset_pos = get_p21_pos()
+      const p15_pos = pos_sub(p16_pos,p15_16_offset_pos)
+  
+      const syahen_t15 = round(distance({x:0,y:joint_pos.j2.y,z:0},p15_pos))
+      const takasa_t15 = round(p15_pos.y - joint_pos.j2.y)
       const {k:angle_t15} = calc_side_4(syahen_t15,takasa_t15)
       const result_t15 = get_J2_J3_rotate(angle_t15,joint_pos.j3.y,joint_pos.j4.y,syahen_t15)
-
-      const dir_sign_t15 = target15.x < 0 ? -1 : 1
-      const xz_vector_t15 = new THREE.Vector3(target15.x,0,target15.z).normalize()
+      if(result_t15.dsp_message){
+        dsp_message = result_t15.dsp_message
+        return {j1_rotate,j2_rotate,j3_rotate,j4_rotate,j5_rotate,j6_rotate,dsp_message}
+      }
+      const wk_j2_rotate = result_t15.j2_rotate
+      const wk_j3_rotate = result_t15.j3_rotate
+  
+      const dir_sign_t15 = p15_pos.x < 0 ? -1 : 1
+      const xz_vector_t15 = new THREE.Vector3(p15_pos.x,0,p15_pos.z).normalize()
       const direction_t15 = round(toAngle(z_vec_base.angleTo(xz_vector_t15)))*dir_sign_t15
       if(isNaN(direction_t15)){
-        console.log("target15 指定可能範囲外！")
-        set_dsp_message("target15 指定可能範囲外！")
-        return
+        dsp_message = "direction_t15 指定可能範囲外！"
+        return {j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,j4_rotate,j5_rotate,j6_rotate,dsp_message}
       }
-
+  
       let wk_j1_rotate = normalize180(direction_t15)
       if(isNaN(wk_j1_rotate)){
-        console.log("wk_j1_rotate 指定可能範囲外！")
         dsp_message = "wk_j1_rotate 指定可能範囲外！"
-        wk_j1_rotate = j1_rotate
+        return {j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,j4_rotate,j5_rotate,j6_rotate,dsp_message}
       }
-
+  
       const baseq = new THREE.Quaternion().multiply(
         new THREE.Quaternion().setFromAxisAngle(y_vec_base,toRadian(wk_j1_rotate))
-      )
-      const p12_offset_pos = quaternionToRotation(baseq,joint_pos.j2)
-      baseq.multiply(
-        new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(result_t15.j2_rotate))
-      )
-      const p13_offset_pos = quaternionToRotation(baseq,joint_pos.j3)
-      baseq.multiply(
-        new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(result_t15.j3_rotate))
+      ).multiply(
+        new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(wk_j2_rotate))
+      ).multiply(
+        new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(wk_j3_rotate))
       )
       const p14_offset_pos = quaternionToRotation(baseq,{x:0,y:joint_pos.j4.y,z:0})
-      const p13_pos = pos_sub(target15,p14_offset_pos)
-      const p14_offset_pos2 = quaternionToRotation(baseq,joint_pos.j4)
-
+      const p13_pos = pos_sub(p15_pos,p14_offset_pos)
+  
       const distance_13_16 = round(distance(p13_pos,p16_pos))
       const result_angle1 = degree3(joint_pos.j4.y,p15_16_len,distance_13_16)
       if(isNaN(result_angle1.angle_C)){
-        console.log("result_angle1.angle_C 指定可能範囲外！")
-        set_dsp_message("result_angle1.angle_C 指定可能範囲外！")
-        return
+        dsp_message = "result_angle1.angle_C 指定可能範囲外！"
+        return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
+          j4_rotate,j5_rotate,j6_rotate,dsp_message}
       }
       const wk_j5_rotate = normalize180(round(180 - result_angle1.angle_C - 90))
-
+  
       const result_p16_zero_offset = calc_side_1(p15_16_len,normalize180(round(180 - result_angle1.angle_C)))
       const p16_zero_offset_pos = quaternionToRotation(baseq,{x:0,y:result_p16_zero_offset.a,z:result_p16_zero_offset.b})
-      const p16_zero_pos = pos_add(target15,p16_zero_offset_pos)
+      const p16_zero_pos = pos_add(p15_pos,p16_zero_offset_pos)
       const distance_16_16 = Math.min(round(distance(p16_zero_pos,p16_pos)),result_p16_zero_offset.b*2)
       const result_angle2 = degree3(result_p16_zero_offset.b,result_p16_zero_offset.b,distance_16_16)
       if(isNaN(result_angle2.angle_C)){
-        console.log("result_angle2.angle_C 指定可能範囲外！")
-        set_dsp_message("result_angle2.angle_C 指定可能範囲外！")
-        return
+        dsp_message = "result_angle2.angle_C 指定可能範囲外！"
+        return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
+          j4_rotate,j5_rotate:wk_j5_rotate,j6_rotate,dsp_message}
       }
       const direction_offset = normalize180(wrist_direction - wk_j1_rotate)
       const wk_j4_rotate = normalize180(round(result_angle2.angle_C * (direction_offset<0?-1:1)))
-
+  
       baseq.multiply(
         new THREE.Quaternion().setFromAxisAngle(y_vec_base,toRadian(wk_j4_rotate))
-      )
-      const p15_offset_pos = quaternionToRotation(baseq,joint_pos.j6)
-      const p15_bese_pos = pos_add(pos_add(pos_add(p12_offset_pos,p13_offset_pos),p14_offset_pos2),p15_offset_pos)
-      const chwck_pos = pos_sub(target15,p15_bese_pos)
-      //console.log(`chwck_pos:{x:${chwck_pos.x}, y:${chwck_pos.y}, z:${chwck_pos.z}}`)
-
-      baseq.multiply(
+      ).multiply(
         new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(wk_j5_rotate))
       )
       const j5q = get_j5_quaternion()
       const p14_j5_diff = quaternionToAngle(quaternionDifference(baseq,j5q))
       const wk_j6_rotate = p14_j5_diff.angle * ((p14_j5_diff.axis.z < 0)?-1:1)
-
-      set_j1_rotate(wk_j1_rotate)
-      set_j2_rotate(result_t15.j2_rotate)
-      set_j3_rotate(result_t15.j3_rotate)
-      set_j4_rotate(wk_j4_rotate)
-      set_j5_rotate(wk_j5_rotate)
-      set_j6_rotate(normalize180(round(wk_j6_rotate + tool_rotate)))
-      set_dsp_message(dsp_message)
+  
+      return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
+        j4_rotate:wk_j4_rotate,j5_rotate:wk_j5_rotate,j6_rotate:wk_j6_rotate,dsp_message}
     }
-
+  
   const get_J2_J3_rotate = (angle_base,side_a,side_b,side_c)=>{
     let dsp_message = undefined
     const max_dis = side_a + side_b
@@ -577,7 +637,7 @@ export default function Home() {
         <a-entity id="rig" position={`${c_pos_x} ${c_pos_y} ${c_pos_z}`} rotation={`${c_deg_x} ${c_deg_y} ${c_deg_z}`}>
           <a-camera id="camera" cursor="rayOrigin: mouse;" position="0 0 0"></a-camera>
         </a-entity>
-        <a-sphere position={edit_pos(target)} scale="0.012 0.012 0.012" color="yellow" visible={true}></a-sphere>
+        <a-sphere position={edit_pos(target)} scale="0.012 0.012 0.012" color={target_error?"red":"yellow"} visible={true}></a-sphere>
         <a-box position={edit_pos(test_pos)} scale="0.03 0.03 0.03" color="green" visible={box_vis}></a-box>
         <Line pos1={{x:1,y:0.0001,z:1}} pos2={{x:-1,y:0.0001,z:-1}} visible={cursor_vis} color="white"></Line>
         <Line pos1={{x:1,y:0.0001,z:-1}} pos2={{x:-1,y:0.0001,z:1}} visible={cursor_vis} color="white"></Line>
