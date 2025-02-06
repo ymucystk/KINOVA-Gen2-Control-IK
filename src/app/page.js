@@ -174,7 +174,7 @@ export default function Home() {
     }
 
     const quaternionToAngle = (q)=>{
-      const wk_angle = 2 * Math.acos(q.w)
+      const wk_angle = 2 * Math.acos(round(q.w))
       if(wk_angle === 0){
         return {angle:round(toAngle(wk_angle)),axis:new THREE.Vector3(0,0,0)}
       }
@@ -283,7 +283,7 @@ export default function Home() {
         ).multiply(
           new THREE.Matrix4().setPosition(joint_pos.j7.x,joint_pos.j7.y,joint_pos.j7.z)
         )
-        const result_target = new THREE.Vector4(0,0,0,1).applyMatrix4(base_m4)
+        const result_target = new THREE.Vector3().applyMatrix4(base_m4)
         const sabun_pos = pos_sub(target,result_target)
         const sabun_distance = sabun_pos.x**2+sabun_pos.y**2+sabun_pos.z**2
         if(round(sabun_distance) <= 0){
@@ -341,17 +341,70 @@ export default function Home() {
   
       const dir_sign_t15 = p15_pos.x < 0 ? -1 : 1
       const xz_vector_t15 = new THREE.Vector3(p15_pos.x,0,p15_pos.z).normalize()
-      const direction_t15 = round(toAngle(z_vec_base.angleTo(xz_vector_t15)))*dir_sign_t15
+      let direction_t15 = round(toAngle(z_vec_base.angleTo(xz_vector_t15)))
       if(isNaN(direction_t15)){
         dsp_message = "direction_t15 指定可能範囲外！"
         return {j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,j4_rotate,j5_rotate,j6_rotate,dsp_message}
       }
+      const wk_syahen = distance({x:0,y:0,z:0},{x:p15_pos.x,y:0,z:p15_pos.z})
+      const wk_kakudo = calc_side_4(wk_syahen,joint_pos.j4.x).k
   
-      let wk_j1_rotate = normalize180(direction_t15)
+      let wk_j1_rotate = normalize180(direction_t15*dir_sign_t15)-(90-wk_kakudo)
       if(isNaN(wk_j1_rotate)){
         dsp_message = "wk_j1_rotate 指定可能範囲外！"
         return {j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,j4_rotate,j5_rotate,j6_rotate,dsp_message}
       }
+  
+      const base_m4 = new THREE.Matrix4().multiply(
+        new THREE.Matrix4().makeRotationY(toRadian(wk_j1_rotate)).setPosition(joint_pos.j1.x,joint_pos.j1.y,joint_pos.j1.z)
+      ).multiply(
+        new THREE.Matrix4().makeRotationX(toRadian(wk_j2_rotate)).setPosition(joint_pos.j2.x,joint_pos.j2.y,joint_pos.j2.z)
+      )
+      const j3_pos_m4_wk = base_m4.clone().multiply(
+        new THREE.Matrix4().makeRotationX(toRadian(wk_j3_rotate)).setPosition((joint_pos.j3.x+joint_pos.j4.x),joint_pos.j3.y,joint_pos.j3.z)
+      )
+      const j3_pos_wk = new THREE.Vector3().applyMatrix4(j3_pos_m4_wk)
+
+      base_m4.multiply(
+        new THREE.Matrix4().makeRotationX(toRadian(wk_j3_rotate)).setPosition(joint_pos.j3.x,joint_pos.j3.y,joint_pos.j3.z)
+      )
+      const j3_pos = new THREE.Vector3().applyMatrix4(base_m4)
+
+      base_m4.multiply(
+        new THREE.Matrix4().setPosition(joint_pos.j4.x,joint_pos.j4.y,joint_pos.j4.z)
+      )
+      const j4_pos = new THREE.Vector3().applyMatrix4(base_m4)
+
+      const distance_13_16 = round(distance(j3_pos_wk,p16_pos))
+      const distance_13_15 = round(distance({x:0,y:0,z:0},joint_pos.j4))
+      const angle_C_1 = degree3(distance_13_15,p15_16_len,distance_13_16).angle_C
+      if(isNaN(angle_C_1)){
+        dsp_message = "angle_C_1 指定可能範囲外！"
+        return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
+          j4_rotate,j5_rotate,j6_rotate,dsp_message}
+      }
+      const wk_j5_rotate = normalize180(round(180 - angle_C_1 - 90))
+
+      const p16_zero_pos_m4_wk = base_m4.clone().multiply(
+        new THREE.Matrix4().makeRotationX(toRadian(wk_j5_rotate)).setPosition(joint_pos.j5.x,joint_pos.j5.y,joint_pos.j5.z)
+      ).multiply(
+        new THREE.Matrix4().setPosition(joint_pos.j6.x,joint_pos.j6.y,joint_pos.j6.z)
+      ).multiply(
+        new THREE.Matrix4().setPosition(joint_pos.j7.x,joint_pos.j7.y,joint_pos.j7.z)
+      )
+      const p16_zero_pos = new THREE.Vector3().applyMatrix4(p16_zero_pos_m4_wk)
+
+      const result_p16_zero_offset = calc_side_1(p15_16_len,normalize180(round(180 - angle_C_1)))
+
+      const distance_16_16 = Math.min(round(distance(p16_zero_pos,p16_pos)),result_p16_zero_offset.b*2)
+      const angle_C_2 = degree3(result_p16_zero_offset.b,result_p16_zero_offset.b,distance_16_16).angle_C
+      if(isNaN(angle_C_2)){
+        dsp_message = "angle_C_2 指定可能範囲外！"
+        return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
+          j4_rotate,j5_rotate:wk_j5_rotate,j6_rotate,dsp_message}
+      }
+      const direction_offset = normalize180(wrist_direction - wk_j1_rotate)
+      const wk_j4_rotate = normalize180(round(angle_C_2 * (direction_offset<0?-1:1)))
   
       const baseq = new THREE.Quaternion().multiply(
         new THREE.Quaternion().setFromAxisAngle(y_vec_base,toRadian(wk_j1_rotate))
@@ -359,33 +412,7 @@ export default function Home() {
         new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(wk_j2_rotate))
       ).multiply(
         new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(wk_j3_rotate))
-      )
-      const p14_offset_pos = quaternionToRotation(baseq,{x:0,y:joint_pos.j4.y,z:0})
-      const p13_pos = pos_sub(p15_pos,p14_offset_pos)
-  
-      const distance_13_16 = round(distance(p13_pos,p16_pos))
-      const result_angle1 = degree3(joint_pos.j4.y,p15_16_len,distance_13_16)
-      if(isNaN(result_angle1.angle_C)){
-        dsp_message = "result_angle1.angle_C 指定可能範囲外！"
-        return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
-          j4_rotate,j5_rotate,j6_rotate,dsp_message}
-      }
-      const wk_j5_rotate = normalize180(round(180 - result_angle1.angle_C - 90))
-  
-      const result_p16_zero_offset = calc_side_1(p15_16_len,normalize180(round(180 - result_angle1.angle_C)))
-      const p16_zero_offset_pos = quaternionToRotation(baseq,{x:0,y:result_p16_zero_offset.a,z:result_p16_zero_offset.b})
-      const p16_zero_pos = pos_add(p15_pos,p16_zero_offset_pos)
-      const distance_16_16 = Math.min(round(distance(p16_zero_pos,p16_pos)),result_p16_zero_offset.b*2)
-      const result_angle2 = degree3(result_p16_zero_offset.b,result_p16_zero_offset.b,distance_16_16)
-      if(isNaN(result_angle2.angle_C)){
-        dsp_message = "result_angle2.angle_C 指定可能範囲外！"
-        return {j1_rotate:wk_j1_rotate,j2_rotate:wk_j2_rotate,j3_rotate:wk_j3_rotate,
-          j4_rotate,j5_rotate:wk_j5_rotate,j6_rotate,dsp_message}
-      }
-      const direction_offset = normalize180(wrist_direction - wk_j1_rotate)
-      const wk_j4_rotate = normalize180(round(result_angle2.angle_C * (direction_offset<0?-1:1)))
-  
-      baseq.multiply(
+      ).multiply(
         new THREE.Quaternion().setFromAxisAngle(y_vec_base,toRadian(wk_j4_rotate))
       ).multiply(
         new THREE.Quaternion().setFromAxisAngle(x_vec_base,toRadian(wk_j5_rotate))
