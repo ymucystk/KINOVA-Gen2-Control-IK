@@ -4,13 +4,29 @@ import * as React from 'react'
 const THREE = window.AFRAME.THREE; // これで　AFRAME と　THREEを同時に使える
 import Controller from './controller.js'
 
+const joint_pos = {
+    base:{x:0,y:0,z:0},
+    j1:{x:0,y:0,z:0},
+    j2:{x:0,y:0.2755,z:0},
+    j3:{x:0,y:0.41,z:0},
+    j4:{x:-0.0098,y:0.3135,z:0},
+    j5:{x:0,y:0,z:0},
+    j6:{x:0.0025,y:0,z:0},
+    j7:{x:0,y:0,z:0.25},
+}
+
+let registered = false
+const cursor_vis = false
+const box_vis = false
+
+const x_vec_base = new THREE.Vector3(1,0,0).normalize()
+const y_vec_base = new THREE.Vector3(0,1,0).normalize()
+const z_vec_base = new THREE.Vector3(0,0,1).normalize()
+
 export default function Home() {
-  const [now, setNow] = React.useState(new Date())
   const [rendered,set_rendered] = React.useState(false)
   const robotNameList = ["Model"]
   const [robotName,set_robotName] = React.useState(robotNameList[0])
-  const [cursor_vis,set_cursor_vis] = React.useState(false)
-  const [box_vis,set_box_vis] = React.useState(false)
   const [target_error,set_target_error] = React.useState(false)
 
   const [j1_rotate,set_j1_rotate] = React.useState(0)
@@ -21,23 +37,23 @@ export default function Home() {
   const [j6_rotate,set_j6_rotate] = React.useState(0)
   const [j7_rotate,set_j7_rotate] = React.useState(0) //指用
 
-  const [j1_object,set_j1_object] = React.useState()
-  const [j2_object,set_j2_object] = React.useState()
-  const [j3_object,set_j3_object] = React.useState()
-  const [j4_object,set_j4_object] = React.useState()
-  const [j5_object,set_j5_object] = React.useState()
-  const [j6_object,set_j6_object] = React.useState()
+  const [j1_object,set_j1_object] = React.useState(new THREE.Object3D())
+  const [j2_object,set_j2_object] = React.useState(new THREE.Object3D())
+  const [j3_object,set_j3_object] = React.useState(new THREE.Object3D())
+  const [j4_object,set_j4_object] = React.useState(new THREE.Object3D())
+  const [j5_object,set_j5_object] = React.useState(new THREE.Object3D())
+  const [j6_object,set_j6_object] = React.useState(new THREE.Object3D())
 
-  const [p11_object,set_p11_object] = React.useState()
-  const [p12_object,set_p12_object] = React.useState()
-  const [p13_object,set_p13_object] = React.useState()
-  const [p14_object,set_p14_object] = React.useState()
-  const [p15_object,set_p15_object] = React.useState()
-  const [p16_object,set_p16_object] = React.useState()
-  const [p20_object,set_p20_object] = React.useState()
-  const [p21_object,set_p21_object] = React.useState()
-  const [p22_object,set_p22_object] = React.useState()
-  const [p51_object,set_p51_object] = React.useState()
+  const [p11_object,set_p11_object] = React.useState(new THREE.Object3D())
+  const [p12_object,set_p12_object] = React.useState(new THREE.Object3D())
+  const [p13_object,set_p13_object] = React.useState(new THREE.Object3D())
+  const [p14_object,set_p14_object] = React.useState(new THREE.Object3D())
+  const [p15_object,set_p15_object] = React.useState(new THREE.Object3D())
+  const [p16_object,set_p16_object] = React.useState(new THREE.Object3D())
+  const [p20_object,set_p20_object] = React.useState(new THREE.Object3D())
+  const [p21_object,set_p21_object] = React.useState(new THREE.Object3D())
+  const [p22_object,set_p22_object] = React.useState(new THREE.Object3D())
+  const [p51_object,set_p51_object] = React.useState(new THREE.Object3D())
 
   const [p15_pos,set_p15_pos] = React.useState({x:0,y:0,z:0})
   const [p16_pos,set_p16_pos] = React.useState({x:0,y:0,z:0})
@@ -60,34 +76,11 @@ export default function Home() {
 
   const toolNameList = ["No tool"]
   const [toolName,set_toolName] = React.useState(toolNameList[0])
-  let registered = false
-
-  const [x_vec_base,set_x_vec_base] = React.useState()
-  const [y_vec_base,set_y_vec_base] = React.useState()
-  const [z_vec_base,set_z_vec_base] = React.useState()
-
-  const joint_pos = {
-    base:{x:0,y:0,z:0},
-    j1:{x:0,y:0,z:0},
-    j2:{x:0,y:0.2755,z:0},
-    j3:{x:0,y:0.41,z:0},
-    j4:{x:-0.0098,y:0.3135,z:0},
-    j5:{x:0,y:0,z:0},
-    j6:{x:0.0025,y:0,z:0},
-    j7:{x:0,y:0,z:0.25},
-  }
 
   const [target,set_target] = React.useState({x:0.3,y:0.4,z:0.3})
   const [p15_16_len,set_p15_16_len] = React.useState(joint_pos.j7.z)
   const [p14_maxlen,set_p14_maxlen] = React.useState(0)
  
-  React.useEffect(function() {
-    const intervalId = setInterval(function() {
-      setNow(new Date());
-    }, 10);
-    return function(){clearInterval(intervalId)};
-  }, [now]);
-
   React.useEffect(() => {
     if(rendered){
       target_update()
@@ -531,21 +524,15 @@ export default function Home() {
 
   React.useEffect(() => {
     if(rendered){
-      const box15_result = getposq(p15_object)
-      const p15_pos = getpos(box15_result.position)
-      set_p15_pos(p15_pos)
-
-      const box16_result = getposq(p16_object)
-      const p16_pos = getpos(box16_result.position)
-      set_p16_pos(p16_pos)
-
+      const p15_pos = new THREE.Vector3().applyMatrix4(p15_object.matrix)
+      const p16_pos = new THREE.Vector3().applyMatrix4(p16_object.matrix)
       set_p15_16_len(distance(p15_pos,p16_pos))
     }
-  },[now])
+  },[p16_object.matrix.elements[14]])
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      setTimeout(set_rendered(true),1)
+      setTimeout(()=>set_rendered(true),1)
       console.log('set_rendered')
 
       if(!registered){
@@ -556,10 +543,6 @@ export default function Home() {
         const result = calc_side_2(teihen, takasa)
         set_p14_maxlen(result.s)
 
-        set_x_vec_base(new THREE.Vector3(1,0,0).normalize())
-        set_y_vec_base(new THREE.Vector3(0,1,0).normalize())
-        set_z_vec_base(new THREE.Vector3(0,0,1).normalize())
-      
         AFRAME.registerComponent('robot-click', {
           init: function () {
             this.el.addEventListener('click', (evt)=>{
